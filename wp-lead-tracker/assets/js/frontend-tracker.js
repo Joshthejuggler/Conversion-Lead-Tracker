@@ -1,30 +1,51 @@
 (function () {
   /**
-   * Sends the tracking data to the WordPress backend via AJAX.
-   * The `wplt` object is available from `wp_localize_script`.
+   * Sends the tracking data to the WordPress backend.
+   * Prefers navigator.sendBeacon to survive page unloads; falls back to fetch.
    *
    * @param {object} payload The data to send.
    */
   function sendToServer(payload) {
-    // We use URLSearchParams to format the data for admin-ajax.php
-    const body = new URLSearchParams();
-    body.append('action', 'wplt_record_event');
-    body.append('nonce', wplt.nonce);
+    if (!window.wplt || !wplt.ajax_url || !wplt.nonce) {
+      console.warn('[WPLT] Missing localized data (ajax_url/nonce).');
+      return;
+    }
 
-    // Append all payload properties to the body
+    // Build URL-encoded body. PHP expects these exact keys.
+    const params = new URLSearchParams();
+    params.append('action', 'wplt_record_event');
+    params.append('nonce', wplt.nonce);
+
+    // Append all payload properties (camelCase keys match PHP).
     for (const key in payload) {
-      if (Object.hasOwnProperty.call(payload, key)) {
-        body.append(key, payload[key]);
+      if (Object.prototype.hasOwnProperty.call(payload, key)) {
+        params.append(key, payload[key]);
       }
     }
 
+    // 1) Try sendBeacon (no cookies needed because you use the nopriv hook + nonce)
+    if (navigator.sendBeacon) {
+      try {
+        // Convert to Blob so content-type is set correctly for PHP’s $_POST parse.
+        const blob = new Blob([params.toString()], { type: 'application/x-www-form-urlencoded;charset=UTF-8' });
+        const ok = navigator.sendBeacon(wplt.ajax_url, blob);
+        if (ok) return; // Done.
+      } catch (e) {
+        // fall through to fetch
+        console.debug('[WPLT] sendBeacon failed, using fetch fallback:', e);
+      }
+    }
+
+    // 2) Fallback to fetch with keepalive
     fetch(wplt.ajax_url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      keepalive: true, // Ensures request is sent even if page is unloading
-      body: body,
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+      // Cookies are not required for nopriv; keepalive helps on unload.
+      credentials: 'omit',
+      keepalive: true,
+      body: params.toString()
+    }).catch(function (e) {
+      console.warn('[WPLT] fetch fallback failed:', e);
     });
   }
 
@@ -44,7 +65,6 @@
     const isSocial = /facebook|instagram|twitter|linkedin|t\.co/i.test(referrer);
 
     // --- Part 1a: Store attribution data on first visit ---
-    // If this is the first page view of the session, capture the initial data.
     if (!sessionStorage.getItem('wplt_tracked')) {
       sessionStorage.setItem('wplt_tracked', 'true');
       sessionStorage.setItem('entry_url', window.location.pathname);
@@ -75,6 +95,7 @@
     const deviceType = /Mobi|Android/i.test(navigator.userAgent) ? 'Mobile' : 'Desktop';
     const trafficType = (['cpc', 'paid', 'ppc'].includes(utm_medium.toLowerCase()) || isAdVisit) ? 'Paid' : isSocial ? 'Social' : referrer ? 'Referral' : 'Direct';
 
+    // Attach to tel/sms/mailto + [data-email]
     document.querySelectorAll('a[href^="tel:"], a[href^="sms:"], a[href^="mailto:"], [data-email]').forEach(function (link) {
       const hrefAttr = link.getAttribute('href') || '';
       let eventType = '';
@@ -96,8 +117,21 @@
 
       if (eventType) {
         link.addEventListener('click', function () {
-          sendToServer({ eventType, eventLabel, utm_source: fallbackSource, utm_medium: fallbackMedium, utm_campaign, utm_term, ad_id, entryUrl, submittingUrl, deviceType, trafficType, pageLocation: window.location.href });
-        });
+          sendToServer({
+            eventType,
+            eventLabel,
+            utm_source: fallbackSource,
+            utm_medium: fallbackMedium,
+            utm_campaign,
+            utm_term,
+            ad_id,
+            entryUrl,
+            submittingUrl,
+            deviceType,
+            trafficType,
+            pageLocation: window.location.href
+          });
+        }, { capture: true }); // fire early during click
       }
     });
 
@@ -105,7 +139,6 @@
     const map = { "utm_campaign": "utm_campaign", "utm_term": "utm_term", "utm_source": "utm_source", "utm_medium": "utm_medium" };
     Object.keys(map).forEach(key => {
       const value = params.get(key);
-      // This selector is specific, often used by form builders like Elementor.
       const field = document.querySelector(`[name="form_fields[${key}]"]`);
       if (value && field) {
         field.value = value;
