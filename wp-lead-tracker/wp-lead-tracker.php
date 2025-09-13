@@ -80,9 +80,6 @@ if ( ! class_exists( 'WP_List_Table' ) ) {
  */
 class WPLT_Events_List_Table extends WP_List_Table {
 
-	/**
-	 * Constructor.
-	 */
 	public function __construct() {
 		parent::__construct(
 			[
@@ -91,13 +88,8 @@ class WPLT_Events_List_Table extends WP_List_Table {
 				'ajax'     => false,
 			]
 		);
-
 	}
 
-	/**
-	 * Define the columns that are going to be used in the table.
-	 * @return array
-	 */
 	public function get_columns() {
 		return [
 			'event_time'     => __( 'Date', 'wp-lead-tracker' ),
@@ -111,13 +103,9 @@ class WPLT_Events_List_Table extends WP_List_Table {
 		];
 	}
 
-	/**
-	 * Define which columns are sortable.
-	 * @return array
-	 */
 	public function get_sortable_columns() {
 		return [
-			'event_time'   => [ 'event_time', 'desc' ], // Set default sort order to 'desc'.
+			'event_time'   => [ 'event_time', 'desc' ],
 			'event_type'   => [ 'event_type', false ],
 			'traffic_type' => [ 'traffic_type', false ],
 			'utm_source'   => [ 'utm_source', false ],
@@ -126,18 +114,15 @@ class WPLT_Events_List_Table extends WP_List_Table {
 		];
 	}
 
-	/**
-	 * Prepare the items for the table to process.
-	 */
 	public function prepare_items() {
 		global $wpdb;
 		$table_name = $wpdb->prefix . WPLT_TABLE_NAME;
 
-		// --- Date Filter Logic for the table ---
-		$where_clause = '';
+		// Date filter
+		$where_clause    = '';
 		$allowed_periods = [ '1', '7', '30', '90' ];
 		if ( isset( $_GET['period'] ) && in_array( $_GET['period'], $allowed_periods, true ) ) {
-			$period = $_GET['period'];
+			$period   = $_GET['period'];
 			$timezone = new DateTimeZone( 'UTC' );
 			$end_date = new DateTime( 'now', $timezone );
 			$start_date = new DateTime( 'now', $timezone );
@@ -165,49 +150,28 @@ class WPLT_Events_List_Table extends WP_List_Table {
 			]
 		);
 
-		// This is the correct place to set the column headers.
 		$columns  = $this->get_columns();
 		$hidden   = [];
 		$sortable = $this->get_sortable_columns();
 		$this->_column_headers = [ $columns, $hidden, $sortable ];
 
-		// Get sorting parameters.
-		// The fatal error was in the next line. We must get the sortable columns into a variable first.
 		$sortable_columns = $this->get_sortable_columns();
 		$orderby = ! empty( $_REQUEST['orderby'] ) && array_key_exists( $_REQUEST['orderby'], $sortable_columns ) ? $_REQUEST['orderby'] : 'event_time';
-		$order   = ! empty( $_REQUEST['order'] ) && in_array( strtolower( $_REQUEST['order'] ), [ 'asc', 'desc' ] ) ? strtolower( $_REQUEST['order'] ) : 'desc';
+		$order   = ! empty( $_REQUEST['order'] ) && in_array( strtolower( $_REQUEST['order'] ), [ 'asc', 'desc' ], true ) ? strtolower( $_REQUEST['order'] ) : 'desc';
 		$offset  = ( $current_page - 1 ) * $per_page;
 
-		// The $orderby and $order variables are validated above, so they are safe to use directly in the query.
-		// We still use prepare() for the LIMIT and OFFSET.
 		$query = "SELECT * FROM {$table_name}{$where_clause} ORDER BY {$orderby} {$order} LIMIT %d OFFSET %d";
 		$this->items = $wpdb->get_results( $wpdb->prepare( $query, $per_page, $offset ), ARRAY_A );
 	}
 
-	/**
-	 * Default column rendering.
-	 * @param array $item
-	 * @param string $column_name
-	 * @return string
-	 */
 	public function column_default( $item, $column_name ) {
 		return isset( $item[ $column_name ] ) ? esc_html( $item[ $column_name ] ) : '';
 	}
 
-	/**
-	 * Custom rendering for the 'event_time' column.
-	 * @param array $item
-	 * @return string
-	 */
 	public function column_event_time( $item ) {
 		return esc_html( gmdate( 'Y-m-d H:i:s', strtotime( $item['event_time'] ) ) );
 	}
 
-	/**
-	 * Custom rendering for the 'submitting_url' column.
-	 * @param array $item
-	 * @return string
-	 */
 	public function column_submitting_url( $item ) {
 		$url  = esc_url( $item['page_location'] );
 		$text = esc_html( $item['submitting_url'] );
@@ -222,7 +186,7 @@ function wplt_render_dashboard_page() {
 	global $wpdb;
 	$table_name = $wpdb->prefix . WPLT_TABLE_NAME;
 
-	// --- RENDER FEEDBACK NOTICES ---
+	// Notices
 	if ( isset( $_GET['settings-updated'] ) && $_GET['settings-updated'] ) {
 		echo '<div class="notice notice-success is-dismissible"><p>' . esc_html__( 'Settings saved.', 'wp-lead-tracker' ) . '</p></div>';
 	}
@@ -262,27 +226,25 @@ function wplt_render_dashboard_page() {
 			echo '<div class="notice notice-warning is-dismissible"><p>' . esc_html__( 'Cannot send test instant notification: No recipient email address is saved.', 'wp-lead-tracker' ) . '</p></div>';
 		}
 	}
-	// --- END RENDER FEEDBACK NOTICES ---
 
-	// Get saved settings for display.
-	$saved_settings = get_option( 'wplt_settings', [] );
+	// Settings defaults
+	$saved_settings  = get_option( 'wplt_settings', [] );
 	$report_settings = wp_parse_args(
 		$saved_settings,
 		[
-			'enabled' => false,
-			'email'   => get_option( 'admin_email' ),
-			'logo_url' => '',
+			'enabled'         => false,
+			'email'           => get_option( 'admin_email' ),
+			'logo_url'        => '',
 			'instant_enabled' => false,
 			'instant_email'   => get_option( 'admin_email' ),
 		]
 	);
 
-	// --- DATE RANGE FILTER LOGIC ---
+	// Date range for counters
 	$allowed_periods = [ '1', '7', '30', '90' ];
 	$current_period  = isset( $_GET['period'] ) && in_array( $_GET['period'], $allowed_periods, true ) ? $_GET['period'] : '30';
-	$timezone        = new DateTimeZone( 'UTC' ); // Match current_time('mysql', 1) which is GMT/UTC.
+	$timezone        = new DateTimeZone( 'UTC' );
 
-	// Calculate current period dates.
 	$end_date_current   = new DateTime( 'now', $timezone );
 	$start_date_current = new DateTime( 'now', $timezone );
 	if ( $current_period > 1 ) {
@@ -291,14 +253,12 @@ function wplt_render_dashboard_page() {
 	$start_date_current->setTime( 0, 0, 0 );
 	$end_date_current->setTime( 23, 59, 59 );
 
-	// Calculate previous period dates for comparison.
 	$end_date_previous   = clone $start_date_current;
 	$end_date_previous->modify( '-1 second' );
 	$start_date_previous = clone $end_date_previous;
 	$start_date_previous->modify( '-' . ( $current_period - 1 ) . ' days' );
 	$start_date_previous->setTime( 0, 0, 0 );
 
-	// Get counts for the current period.
 	$current_counts_raw = $wpdb->get_results(
 		$wpdb->prepare(
 			"SELECT event_type, COUNT(id) as total FROM {$table_name} WHERE event_time BETWEEN %s AND %s GROUP BY event_type",
@@ -306,8 +266,6 @@ function wplt_render_dashboard_page() {
 			$end_date_current->format( 'Y-m-d H:i:s' )
 		)
 	);
-
-	// Get counts for the previous period.
 	$previous_counts_raw = $wpdb->get_results(
 		$wpdb->prepare(
 			"SELECT event_type, COUNT(id) as total FROM {$table_name} WHERE event_time BETWEEN %s AND %s GROUP BY event_type",
@@ -316,7 +274,6 @@ function wplt_render_dashboard_page() {
 		)
 	);
 
-	// Combine data into a single array for easy access.
 	$stats = [];
 	foreach ( $current_counts_raw as $row ) {
 		$stats[ $row->event_type ]['current'] = (int) $row->total;
@@ -325,7 +282,6 @@ function wplt_render_dashboard_page() {
 		$stats[ $row->event_type ]['previous'] = (int) $row->total;
 	}
 	$all_event_types = array_keys( $stats );
-	// --- END DATE RANGE LOGIC ---
 
 	$list_table = new WPLT_Events_List_Table();
 	$list_table->prepare_items();
@@ -333,7 +289,6 @@ function wplt_render_dashboard_page() {
 	<div class="wrap">
 		<h1><?php esc_html_e( 'Lead Tracker Dashboard', 'wp-lead-tracker' ); ?></h1>
 
-		<?php // --- DATE FILTER LINKS --- ?>
 		<ul class="subsubsub">
 			<li><a href="?page=wp-lead-tracker&period=1" class="<?php echo '1' === $current_period ? 'current' : ''; ?>">Today</a> |</li>
 			<li><a href="?page=wp-lead-tracker&period=7" class="<?php echo '7' === $current_period ? 'current' : ''; ?>">Last 7 Days</a> |</li>
@@ -342,7 +297,6 @@ function wplt_render_dashboard_page() {
 		</ul>
 		<br class="clear">
 
-		<?php // --- COUNTER BOXES --- ?>
 		<div id="wplt-stats" class="wplt-counter-boxes">
 			<?php if ( ! empty( $all_event_types ) ) : ?>
 				<?php
@@ -353,7 +307,7 @@ function wplt_render_dashboard_page() {
 					if ( $previous_val > 0 ) {
 						$percentage = ( ( $current_val - $previous_val ) / $previous_val ) * 100;
 					} elseif ( $current_val > 0 ) {
-						$percentage = 100; // Infinite growth from 0.
+						$percentage = 100; // growth from zero
 					}
 					?>
 					<div class="wplt-counter-box">
@@ -370,7 +324,6 @@ function wplt_render_dashboard_page() {
 				<p><?php esc_html_e( 'No events have been recorded yet.', 'wp-lead-tracker' ); ?></p>
 			<?php endif; ?>
 		</div>
-		<?php // --- END COUNTER BOXES --- ?>
 
 		<div id="wplt-settings" style="background: #fff; padding: 20px; margin-bottom: 20px; border-top: 1px solid #c3c4c7;">
 			<form method="post" action="admin.php?page=wp-lead-tracker">
@@ -394,6 +347,7 @@ function wplt_render_dashboard_page() {
 				<p class="submit">
 					<?php submit_button( __( 'Send Test Report', 'wp-lead-tracker' ), 'secondary', 'wplt_send_monthly_test', false ); ?>
 				</p>
+
 				<div id="wplt-instant-settings" style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
 					<h2><?php esc_html_e( 'Instant Lead Notifications', 'wp-lead-tracker' ); ?></h2>
 					<p><?php esc_html_e( 'Enable an email to be sent instantly whenever a new lead event is triggered.', 'wp-lead-tracker' ); ?></p>
@@ -411,6 +365,7 @@ function wplt_render_dashboard_page() {
 						<?php submit_button( __( 'Send Test Notification', 'wp-lead-tracker' ), 'secondary', 'wplt_send_instant_test', false ); ?>
 					</p>
 				</div>
+
 				<p class="submit">
 					<?php submit_button( __( 'Save Settings', 'wp-lead-tracker' ), 'primary', 'wplt_save_settings', false ); ?>
 				</p>
@@ -441,11 +396,8 @@ function wplt_get_event_type_counts() {
 
 /**
  * Enqueue admin-specific stylesheets.
- *
- * @param string $hook The current admin page.
  */
 function wplt_enqueue_admin_styles( $hook ) {
-	// Only load on our plugin's admin page.
 	if ( 'toplevel_page_wp-lead-tracker' !== $hook ) {
 		return;
 	}
@@ -459,7 +411,7 @@ function wplt_enqueue_admin_styles( $hook ) {
 add_action( 'admin_enqueue_scripts', 'wplt_enqueue_admin_styles' );
 
 /**
- * Handles processing of dashboard actions like saving settings.
+ * Handles processing of dashboard actions like saving settings and test sends.
  */
 function wplt_handle_dashboard_actions() {
 	if ( ! isset( $_REQUEST['page'] ) || 'wp-lead-tracker' !== $_REQUEST['page'] ) {
@@ -487,9 +439,9 @@ function wplt_handle_dashboard_actions() {
 		}
 
 		$new_settings = [
-			'enabled' => isset( $_POST['wplt_report_enabled'] ),
-			'email'   => implode( ', ', $sanitized_emails ),
-			'logo_url' => isset( $_POST['wplt_report_logo_url'] ) ? esc_url_raw( wp_unslash( $_POST['wplt_report_logo_url'] ) ) : '',
+			'enabled'         => isset( $_POST['wplt_report_enabled'] ),
+			'email'           => implode( ', ', $sanitized_emails ),
+			'logo_url'        => isset( $_POST['wplt_report_logo_url'] ) ? esc_url_raw( wp_unslash( $_POST['wplt_report_logo_url'] ) ) : '',
 			'instant_enabled' => isset( $_POST['wplt_instant_report_enabled'] ),
 			'instant_email'   => implode( ', ', $instant_sanitized_emails ),
 		];
@@ -507,7 +459,7 @@ function wplt_handle_dashboard_actions() {
 		exit;
 	}
 
-	// --- HANDLE TEST SEND ---
+	// --- HANDLE MONTHLY TEST SEND ---
 	if ( isset( $_POST['wplt_send_monthly_test'] ) && isset( $_POST['wplt_settings_nonce'] ) && wp_verify_nonce( sanitize_key( $_POST['wplt_settings_nonce'] ), 'wplt_save_settings_action' ) ) {
 		$settings_for_test = get_option( 'wplt_settings', [ 'enabled' => false, 'email' => '' ] );
 		$recipients        = $settings_for_test['email'];
@@ -523,11 +475,11 @@ function wplt_handle_dashboard_actions() {
 		exit;
 	}
 
-	// --- HANDLE INSTANT TEST SEND ---
-	if ( isset( $_POST['wplt_send_instant_test'] ) && isset( $_POST['wplt_settings_nonce'] ) && wp_verify_nonce( sanitize_key( $_POST['wplt_settings_nonce'] ), 'wplt_save_settings_action' ) ) {
-		// This block is intentionally left empty for now.
-		// We will make this functional in the next step.
-		// For now, we can redirect to show that the button click is being registered.
+	// --- HANDLE INSTANT TEST SEND (NOW FUNCTIONAL) ---
+	if ( isset( $_POST['wplt_send_instant_test'] )
+		&& isset( $_POST['wplt_settings_nonce'] )
+		&& wp_verify_nonce( sanitize_key( $_POST['wplt_settings_nonce'] ), 'wplt_save_settings_action' ) ) {
+
 		$settings_for_test = get_option( 'wplt_settings', [ 'instant_enabled' => false, 'instant_email' => '' ] );
 		$recipients        = $settings_for_test['instant_email'];
 
@@ -535,7 +487,24 @@ function wplt_handle_dashboard_actions() {
 			wp_safe_redirect( admin_url( 'admin.php?page=wp-lead-tracker&instant-test-sent=0' ) );
 			exit;
 		}
-		// In the future, we will send an email here and check the result.
+
+		$mock_data = [
+			'event_type'    => 'phone_click',
+			'event_label'   => '555-123-4567 (Test)',
+			'traffic_type'  => 'Direct',
+			'device_type'   => 'Desktop',
+			'utm_source'    => 'google',
+			'utm_medium'    => 'cpc',
+			'utm_campaign'  => 'spring_sale',
+			'utm_term'      => 'test keyword',
+			'page_location' => get_site_url( null, '/test-page/' ),
+		];
+
+		$sent = wplt_send_instant_lead_notification( $mock_data );
+
+		$redirect_url = admin_url( 'admin.php?page=wp-lead-tracker&instant-test-sent=' . ( $sent ? '1' : '0' ) );
+		wp_safe_redirect( $redirect_url );
+		exit;
 	}
 }
 add_action( 'admin_init', 'wplt_handle_dashboard_actions' );
@@ -567,6 +536,7 @@ add_action( 'wp_enqueue_scripts', 'wplt_enqueue_scripts' );
  * The function that generates and sends the monthly report.
  *
  * @param bool $is_test Whether this is a test run.
+ * @return bool True if mail accepted, false otherwise.
  */
 function wplt_send_monthly_report( $is_test = false ) {
 	$saved_settings = get_option( 'wplt_settings', [] );
@@ -583,7 +553,7 @@ function wplt_send_monthly_report( $is_test = false ) {
 		return false;
 	}
 
-	$recipients_raw     = explode( ',', $settings['email'] );
+	$recipients_raw   = explode( ',', $settings['email'] );
 	$valid_recipients = [];
 	foreach ( $recipients_raw as $email ) {
 		$trimmed_email = trim( $email );
@@ -617,7 +587,7 @@ function wplt_send_monthly_report( $is_test = false ) {
 	$site_title = get_bloginfo( 'name' );
 	$subject    = sprintf( 'Your Monthly Lead Report for %s from %s', $month_name, $site_title );
 
-	// --- GET DATA FOR THE REPORT ---
+	// Build data sets
 	$start_date_previous = clone $start_date;
 	$start_date_previous->modify( '-1 month' );
 	$end_date_previous = clone $end_date;
@@ -707,8 +677,8 @@ function wplt_send_monthly_report( $is_test = false ) {
 		$previous_total_leads               += (int) $row->total;
 	}
 	$all_event_types = array_unique( array_merge( array_keys( $stats ), array_column( $previous_counts_raw, 'event_type' ) ) );
-	// --- END GET DATA ---
 
+	// Build email body
 	ob_start();
 	$event_icons = [
 		'phone_click' => '☎️',
@@ -810,7 +780,7 @@ function wplt_send_monthly_report( $is_test = false ) {
 	$body = ob_get_clean();
 
 	$headers = [ 'Content-Type: text/html; charset=UTF-8' ];
-	return wp_mail( $valid_recipients, $subject, $body, $headers );
+	return (bool) wp_mail( $valid_recipients, $subject, $body, $headers );
 }
 add_action( 'wplt_monthly_report_event', 'wplt_send_monthly_report' );
 
@@ -818,6 +788,7 @@ add_action( 'wplt_monthly_report_event', 'wplt_send_monthly_report' );
  * Sends an instant notification for a new lead.
  *
  * @param array $lead_data The data for the lead that was just recorded.
+ * @return bool True if mail accepted for delivery, false otherwise.
  */
 function wplt_send_instant_lead_notification( $lead_data ) {
 	$saved_settings = get_option( 'wplt_settings', [] );
@@ -831,10 +802,10 @@ function wplt_send_instant_lead_notification( $lead_data ) {
 
 	// Check if enabled and if there are recipients.
 	if ( ! $settings['instant_enabled'] || empty( $settings['instant_email'] ) ) {
-		return;
+		return false;
 	}
 
-	$recipients_raw     = explode( ',', $settings['instant_email'] );
+	$recipients_raw   = explode( ',', $settings['instant_email'] );
 	$valid_recipients = [];
 	foreach ( $recipients_raw as $email ) {
 		$trimmed_email = trim( $email );
@@ -844,11 +815,11 @@ function wplt_send_instant_lead_notification( $lead_data ) {
 	}
 
 	if ( empty( $valid_recipients ) ) {
-		return;
+		return false;
 	}
 
 	$site_title           = get_bloginfo( 'name' );
-	$event_type_formatted = ucwords( str_replace( '_', ' ', $lead_data['event_type'] ) );
+	$event_type_formatted = isset( $lead_data['event_type'] ) ? ucwords( str_replace( '_', ' ', $lead_data['event_type'] ) ) : 'Lead';
 	$subject              = sprintf( 'New Lead on %s: %s', $site_title, $event_type_formatted );
 
 	// Build email body.
@@ -859,20 +830,20 @@ function wplt_send_instant_lead_notification( $lead_data ) {
 	<table style="font-family: sans-serif; border-collapse: collapse; width: 100%;">
 		<?php
 		$data_map = [
-			'event_type'     => 'Event Type',
-			'event_label'    => 'Event Label',
-			'traffic_type'   => 'Traffic Type',
-			'device_type'    => 'Device Type',
-			'utm_source'     => 'UTM Source',
-			'utm_medium'     => 'UTM Medium',
-			'utm_campaign'   => 'UTM Campaign',
-			'utm_term'       => 'UTM Term',
-			'page_location'  => 'Page URL',
+			'event_type'    => 'Event Type',
+			'event_label'   => 'Event Label',
+			'traffic_type'  => 'Traffic Type',
+			'device_type'   => 'Device Type',
+			'utm_source'    => 'UTM Source',
+			'utm_medium'    => 'UTM Medium',
+			'utm_campaign'  => 'UTM Campaign',
+			'utm_term'      => 'UTM Term',
+			'page_location' => 'Page URL',
 		];
 
 		foreach ( $data_map as $key => $label ) {
 			if ( ! empty( $lead_data[ $key ] ) ) {
-				$value = 'event_type' === $key ? ucwords( str_replace( '_', ' ', $lead_data[ $key ] ) ) : $lead_data[ $key ];
+				$value = ( 'event_type' === $key ) ? ucwords( str_replace( '_', ' ', $lead_data[ $key ] ) ) : $lead_data[ $key ];
 				?>
 				<tr style="border-bottom: 1px solid #eeeeee;">
 					<td style="padding: 8px; font-weight: bold;"><?php echo esc_html( $label ); ?>:</td>
@@ -887,7 +858,8 @@ function wplt_send_instant_lead_notification( $lead_data ) {
 	$body = ob_get_clean();
 
 	$headers = [ 'Content-Type: text/html; charset=UTF-8' ];
-	wp_mail( $valid_recipients, $subject, $body, $headers );
+
+	return (bool) wp_mail( $valid_recipients, $subject, $body, $headers );
 }
 
 /**
@@ -902,7 +874,7 @@ function wplt_record_event_handler() {
 	global $wpdb;
 	$table_name = $wpdb->prefix . WPLT_TABLE_NAME;
 
-	// Sanitize all incoming data.
+	// Sanitize incoming data.
 	$data = [
 		'event_time'     => current_time( 'mysql', 1 ), // GMT time.
 		'event_type'     => isset( $_POST['eventType'] ) ? sanitize_text_field( wp_unslash( $_POST['eventType'] ) ) : '',
@@ -919,17 +891,15 @@ function wplt_record_event_handler() {
 		'page_location'  => isset( $_POST['pageLocation'] ) ? esc_url_raw( wp_unslash( $_POST['pageLocation'] ) ) : '',
 	];
 
-	// Insert data into the database.
 	$result = $wpdb->insert( $table_name, $data );
 
 	if ( false === $result ) {
 		wp_send_json_error( 'Failed to save event to the database.' );
 	} else {
-		// Call the instant notification function.
+		// Trigger instant notification (returns bool, but we don't need it here).
 		wplt_send_instant_lead_notification( $data );
 		wp_send_json_success( 'Event recorded.' );
 	}
 }
-// Handle for logged-in and non-logged-in users.
 add_action( 'wp_ajax_wplt_record_event', 'wplt_record_event_handler' );
 add_action( 'wp_ajax_nopriv_wplt_record_event', 'wplt_record_event_handler' );
